@@ -1,64 +1,71 @@
 const fs = require('fs');
 const path = require('path');
-const { sendMessage } = require('../handles/message');
 
 module.exports = {
-  name: 'help',
-  description: 'Show available commands with descriptions',
-  role: 1,
-  author: 'kiana',
-  
-  execute(senderId, args, pageAccessToken) {
-    const commandsDir = path.join(__dirname, '../cmds');
-    const commandFiles = fs.readdirSync(commandsDir).filter(file => file.endsWith('.js'));
+  name: 'menu',
+  description: 'Afficher les commandes disponibles',
+  author: 'System',
+  execute(senderId, args, pageAccessToken, sendMessage) {
+    try {
+      const commandsDir = path.join(__dirname, '../commands');
 
-   
-    const commands = commandFiles.map((file) => {
-      const command = require(path.join(commandsDir, file));
-      return {
-        title: `✨ ${command.name.charAt(0).toUpperCase() + command.name.slice(1)}`,
-        description: command.description,
-        payload: `${command.name.toUpperCase()}_PAYLOAD`
-      };
-    });
+      // Vérifie si le répertoire existe avant de lire son contenu
+      if (!fs.existsSync(commandsDir)) {
+        return sendMessage(senderId, { text: 'Le répertoire des commandes n\'existe pas.' }, pageAccessToken);
+      }
 
-    const totalCommands = commands.length;
-    const commandsPerPage = 5;
-    const totalPages = Math.ceil(totalCommands / commandsPerPage);
-    let page = parseInt(args[0], 10);
+      const commandFiles = fs.readdirSync(commandsDir).filter(file => file.endsWith('.js'));
 
- 
-    if (isNaN(page) || page < 1) page = 1;
+      // Vérifie s'il y a des fichiers dans le répertoire
+      if (commandFiles.length === 0) {
+        return sendMessage(senderId, { text: 'Aucune commande disponible.' }, pageAccessToken);
+      }
 
-    // Display all commands if "help all" is provided
-    if (args[0]?.toLowerCase() === 'all') {
-      const helpTextMessage = `🌟 **All Available Commands**\n📜 **Total Commands**: ${totalCommands}\n\n${commands.map((cmd, index) => `${index + 1}. ${cmd.title}\n📖 ${cmd.description}`).join('\n\n')}`;
-      return sendMessage(senderId, { text: helpTextMessage }, pageAccessToken);
-    }
+      const commands = [];
+      const quickReplies = commandFiles.map(file => {
+        try {
+          const command = require(path.join(commandsDir, file));
 
+          // Vérifie que la commande a bien un nom
+          if (!command.name) {
+            commands.push(`❌ La commande dans le fichier ${file} est invalide.`);
+            return null;
+          }
 
-    const startIndex = (page - 1) * commandsPerPage;
-    const commandsForPage = commands.slice(startIndex, startIndex + commandsPerPage);
+          // Formatage des commandes pour l'affichage sans description
+          commands.push(`╟ ${command.name.toUpperCase()}`);
 
-    if (commandsForPage.length === 0) {
-      return sendMessage(senderId, {
-        text: `❌ Oops! Page ${page} doesn't exist. There are only ${totalPages} page(s) available.`,
+          // Création d'un bouton Quick Reply pour chaque commande
+          return {
+            content_type: 'text',
+            title: command.name,
+            payload: `HELP_${command.name.toUpperCase()}`
+          };
+        } catch (err) {
+          console.error(`Erreur lors du chargement de la commande ${file}:`, err);
+          commands.push(`❌ Erreur lors du chargement de la commande ${file}.`);
+          return null;
+        }
+      }).filter(Boolean); // Filtre les valeurs nulles
+
+      const helpMessage = `
+╔══════════════╗
+║ 📜 Commandes Disponibles ║
+╟──────────────╢
+╟${commands.join('\n╟─────────────\n')}
+╚══════════════╝
+💡 Nombre total de commandes : ${commandFiles.length}
+
+Veuillez cliquer sur l'un des boutons ci-dessous pour sélectionner l'intelligence artificielle que vous souhaitez utiliser. 🤖👇`;
+
+      sendMessage(senderId, { 
+        text: helpMessage, 
+        quick_replies: quickReplies 
       }, pageAccessToken);
+      
+    } catch (error) {
+      console.error('Erreur lors de l\'exécution de la commande help:', error);
+      sendMessage(senderId, { text: 'Une erreur est survenue lors de l\'affichage des commandes.' }, pageAccessToken);
     }
-
-    const helpTextMessage = `🚀 **Commands List** (Page ${page}/${totalPages})\n📜 **Total Commands**: ${totalCommands}\n\n${commandsForPage.map((cmd, index) => `${startIndex + index + 1}. ${cmd.title}\n📝 ${cmd.description}`).join('\n\n')}\n\n📌 **Tip**: Use "help [page]" to switch pages, or "help all" to see all commands!`;
-
-
-    const quickReplies = commandsForPage.map((cmd) => ({
-      content_type: "text",
-      title: cmd.title.replace('✨ ', ''),
-      payload: cmd.payload
-    }));
-
-
-    sendMessage(senderId, {
-      text: helpTextMessage,
-      quick_replies: quickReplies
-    }, pageAccessToken);
   }
 };
